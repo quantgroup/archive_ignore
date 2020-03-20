@@ -1,10 +1,12 @@
 import sqlalchemy as db
 import pyodbc
+import pandas as pd
 
 # user input requirements:
 # * server name
 # * database name
-# * table name
+# * table names
+# * out file name
 
 def mk_connect_str(servname, dbname, dialect = 'mssql', driver = 'pyodbc', trust_connect = True, sql_driver = 'ODBC+Driver+17+for+SQL+Server'):
     """Creates a connection string for a server
@@ -34,25 +36,48 @@ def mk_connect_str(servname, dbname, dialect = 'mssql', driver = 'pyodbc', trust
 
 # assigning the engine and creating the connection
 connection_string = mk_connect_str('iamcqadpoc', 'qai')
-print(connection_string)
 engine = db.create_engine(connection_string)
 connection_object = engine.connect()
 metadata = db.MetaData()
 
+# JUST USED TERRY'S QUERY WILL COME BACK ONCE SQLALCHEMY IS A BIT CLEARER
 # specifying the tables
-estimate_tab = db.Table('tredetper', metadata, autoload = True, autoload_with=engine)
+# estimate_tab = db.Table('tredetper', metadata, autoload = True, autoload_with=engine)
 
 # writing the query
-query = db.select([estimate_tab])
+query = """
+    select
+      estpermid as security_id
+    ,	brokerid as broker_id
+    ,	cast(perenddate as date) as period_date
+    ,	cast(effectivedate as date) as estimate_date
+    ,	defestvalue as value
+    ,	b.description as currency
+    , source_id = 'ibes'
+    from
+      tredetper a
+    join
+      trecode b
+    on
+      a.defcurrpermid = b.code
+    and b.codetype = 7
+    where
+      measure = 9
+    and pertype = 4
+    and effectivedate >= getdate() - 365
+"""
 
 # executing the query
 result_proxy = connection_object.execute(query)
 
 # fetching the result
-result_set = result_proxy.fetchone()
+result_set = result_proxy.fetchall()
 
-# displaying some output
-print(result_set)
+# Converting into a DataFrame
+result_frame = pd.DataFrame(result_set)
+
+# Writing to a csv
+result_frame.to_csv('estimate_raw.csv')
 
 # closing the connection
 connection_object.close()
